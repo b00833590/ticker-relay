@@ -2,6 +2,7 @@ import asyncio
 import json
 import websockets
 import os
+from http import HTTPStatus
 
 clients_navigateurs = set()
 
@@ -33,9 +34,26 @@ async def gerer_connexion(websocket):
         print(f"Erreur de connexion : {e}")
 
 
+async def healthcheck(connection, request):
+    """
+    Intercepte les requetes HTTP classiques (comme celles d'UptimeRobot)
+    avant la tentative de handshake WebSocket, et repond 200 OK directement.
+    Si la requete est une vraie demande d'upgrade WebSocket, on renvoie None
+    pour laisser la librairie websockets traiter la connexion normalement.
+    """
+    if request.headers.get("Upgrade", "").lower() != "websocket":
+        return connection.respond(HTTPStatus.OK, "OK - Serveur relais actif\n")
+    return None
+
+
 async def main():
     port = int(os.environ.get("PORT", 8765))
-    async with websockets.serve(gerer_connexion, "0.0.0.0", port):
+    async with websockets.serve(
+        gerer_connexion,
+        "0.0.0.0",
+        port,
+        process_request=healthcheck
+    ):
         print(f"Serveur relais démarré sur le port {port}")
         await asyncio.Future()
 
