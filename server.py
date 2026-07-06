@@ -12,18 +12,22 @@ dernieres_donnees = {
 async def recevoir_maj(request):
     """POST /update : recoit les derniers prix depuis refinitiv_stream.py"""
     global dernieres_donnees
+    print("POST /update recu")
     try:
         data = await request.json()
         dernieres_donnees = data
+        print(f"Donnees mises a jour : {len(data.get('indices', []))} indices")
         return web.json_response({"status": "ok"})
     except Exception as e:
+        print(f"Erreur dans /update : {e}")
         return web.json_response({"status": "erreur", "detail": str(e)}, status=400)
 
 
 async def envoyer_dernieres_donnees(request):
     """GET /latest : renvoie les derniers prix connus au site web"""
+    print("GET /latest recu")
     reponse = web.json_response(dernieres_donnees)
-    reponse.headers["Access-Control-Allow-Origin"] = "*"  # autorise l'appel depuis GitHub Pages
+    reponse.headers["Access-Control-Allow-Origin"] = "*"
     return reponse
 
 
