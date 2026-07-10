@@ -23,7 +23,7 @@ TICKERS = {
     "BITCOIN": "BTC-USD",
 }
 
-INTERVALLE_SECONDES = 12
+INTERVALLE_SECONDES = 3
 
 
 async def recuperer_prix_yahoo(session, nom, symbole):
