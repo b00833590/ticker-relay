@@ -91,8 +91,65 @@ async def arreter_tache_fond(app):
 
 
 async def envoyer_dernieres_donnees(request):
-    """GET /latest : renvoie les derniers prix connus au site web"""
+    """GET /latest : renvoie les derniers prix connus au site web (liste fixe par defaut)"""
     reponse = web.json_response(dernieres_donnees)
+    reponse.headers["Access-Control-Allow-Origin"] = "*"
+    return reponse
+
+
+async def rechercher_symboles(request):
+    """GET /search?q=... : recherche de tickers via l'API de recherche Yahoo Finance,
+    utilisee par l'onglet 'Indices & Entreprises' du site pour trouver n'importe
+    quel symbole (action, indice, crypto, matiere premiere)."""
+    requete = request.query.get("q", "").strip()
+    resultats = []
+
+    if requete:
+        url = "https://query1.finance.yahoo.com/v1/finance/search"
+        params = {"q": requete, "quotesCount": 8, "newsCount": 0}
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+
+        try:
+            async with ClientSession() as session:
+                async with session.get(url, params=params, headers=headers, timeout=8) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        for quote in data.get("quotes", []):
+                            symbole = quote.get("symbol")
+                            nom = quote.get("shortname") or quote.get("longname") or symbole
+                            bourse = quote.get("exchange", "")
+                            if symbole:
+                                resultats.append({"symbole": symbole, "nom": nom, "bourse": bourse})
+        except Exception as e:
+            print(f"Erreur recherche Yahoo pour '{requete}' : {e}")
+
+    reponse = web.json_response({"resultats": resultats})
+    reponse.headers["Access-Control-Allow-Origin"] = "*"
+    return reponse
+
+
+async def envoyer_prix_personnalises(request):
+    """GET /latest-custom?symbols=AAPL,MSFT,^GSPC : recupere a la demande (sans cache)
+    les prix d'une liste de symboles choisis par l'utilisateur sur son navigateur."""
+    symboles_bruts = request.query.get("symbols", "")
+    symboles = [s.strip() for s in symboles_bruts.split(",") if s.strip()][:20]
+
+    if not symboles:
+        reponse = web.json_response({"derniere_maj": None, "indices": []})
+        reponse.headers["Access-Control-Allow-Origin"] = "*"
+        return reponse
+
+    async with ClientSession() as session:
+        resultats = await asyncio.gather(*[
+            recuperer_prix_yahoo(session, symbole, symbole)
+            for symbole in symboles
+        ])
+
+    from datetime import datetime
+    reponse = web.json_response({
+        "derniere_maj": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "indices": resultats
+    })
     reponse.headers["Access-Control-Allow-Origin"] = "*"
     return reponse
 
@@ -103,6 +160,8 @@ async def healthcheck(request):
 
 app = web.Application()
 app.router.add_get("/latest", envoyer_dernieres_donnees)
+app.router.add_get("/search", rechercher_symboles)
+app.router.add_get("/latest-custom", envoyer_prix_personnalises)
 app.router.add_get("/", healthcheck)
 app.on_startup.append(demarrer_tache_fond)
 app.on_cleanup.append(arreter_tache_fond)
